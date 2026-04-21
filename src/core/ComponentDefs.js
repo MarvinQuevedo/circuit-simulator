@@ -1,8 +1,8 @@
 import { registry } from './ComponentRegistry';
 import { ResistorModel, SwitchModel, PushbuttonModel, BulbModel } from './models/ResistorBased.jsx';
-import { DcVoltageSourceModel, AcVoltageSourceModel, GroundModel } from './models/Sources.jsx';
+import { DcVoltageSourceModel, AcVoltageSourceModel, GroundModel, DcCurrentSourceModel } from './models/Sources.jsx';
 import { DiodeModel, LedModel } from './models/Semiconductors.jsx';
-import { CapacitorModel, NpnTransistorModel, PnpTransistorModel } from './models/Reactive.jsx';
+import { CapacitorModel, InductorModel, NpnTransistorModel, PnpTransistorModel } from './models/Reactive.jsx';
 import { 
   AndGateModel, OrGateModel, NotGateModel, XorGateModel, NandGateModel, NorGateModel,
   SevenSegmentDisplayModel, DecoderBCD7SegModel, Counter4BitModel, ShiftRegister8BitModel, ClockSourceModel 
@@ -20,6 +20,8 @@ registry.register(new GroundModel());
 registry.register(new DiodeModel());
 registry.register(new LedModel());
 registry.register(new CapacitorModel());
+registry.register(new InductorModel());
+registry.register(new DcCurrentSourceModel());
 registry.register(new NpnTransistorModel());
 registry.register(new PnpTransistorModel());
 registry.register(new VoltageRegulatorModel());

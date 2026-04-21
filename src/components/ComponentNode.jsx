@@ -1,24 +1,34 @@
-import React, { useState } from 'react';
+import React, { memo, useState } from 'react';
 import { COMPONENT_DEFINITIONS, registry } from '../core/ComponentDefs';
+import { usePinVoltages, useBranchCurrent } from '../hooks/useSimulation';
 
-export default function ComponentNode({ 
-  component, 
-  isSelected, 
-  onSelect, 
-  onMove, 
+function ComponentNode({
+  component,
+  isSelected,
+  onSelect,
+  onMove,
   onRotate,
   onInteract,
   onPress,
   onRelease,
   onMoveEnd,
   wiringHandlers,
-  simulationCurrent,
+  simulationCurrent: simulationCurrentProp,
   isSimulating,
   zoom = 1,
   showProbes = false,
   vizMode = 'digital',
-  nodeVoltages = {}
+  nodeVoltages: nodeVoltagesProp = {}
 }) {
+  // Subscribe to simulation data via external store — no re-render on
+  // topology-unrelated state changes in the main reducer.
+  const storeVoltages = usePinVoltages(component.pins.map(p => p.id));
+  const storeCurrent = useBranchCurrent(component.id);
+
+  // When simulating, use the store values; otherwise fall back to props (which
+  // will be empty objects / 0 when the sim is stopped).
+  const nodeVoltages = isSimulating ? storeVoltages : nodeVoltagesProp;
+  const simulationCurrent = isSimulating ? storeCurrent : (simulationCurrentProp ?? 0);
   const { id, type, x, y, rotation, pins } = component;
   const def = COMPONENT_DEFINITIONS[type];
   const { startWiring, finishWiring, wiringStartPin } = wiringHandlers;
@@ -158,11 +168,11 @@ export default function ComponentNode({
         </text>
       )}
       {pins.map((pin) => {
-        const v = nodeVoltages[pin.id] || 0;
+        const v = nodeVoltages[pin.id] ?? 0;
         const isAnalog = vizMode === 'analog';
         const probeText = isAnalog ? `${v.toFixed(1)}V` : (v > 2.0 ? '1' : '0');
         const probeWidth = isAnalog ? 32 : 12;
-        
+
         const getProbeColor = (val) => {
           if (!isAnalog) return val > 2.0 ? "#ef4444" : "#1e40af";
           if (val > 0.1) return "#ef4444"; // Hot
@@ -172,10 +182,10 @@ export default function ComponentNode({
 
         return (
           <g key={pin.id}>
-            <circle 
-              cx={pin.offsetX} 
-              cy={pin.offsetY} 
-              r="6" 
+            <circle
+              cx={pin.offsetX}
+              cy={pin.offsetY}
+              r="6"
               fill={wiringStartPin?.pinId === pin.id ? "var(--wire-active)" : "var(--wire-color)"}
               stroke="var(--bg-color)"
               strokeWidth="2"
@@ -195,11 +205,11 @@ export default function ComponentNode({
               }}
             />
             {pin.label && (
-              <text 
-                x={pin.offsetX} 
-                y={pin.offsetY + (pin.offsetY > 0 ? 12 : -8)} 
-                fill="var(--text-secondary)" 
-                fontSize="8" 
+              <text
+                x={pin.offsetX}
+                y={pin.offsetY + (pin.offsetY > 0 ? 12 : -8)}
+                fill="var(--text-secondary)"
+                fontSize="8"
                 textAnchor="middle"
                 style={{ pointerEvents: 'none', opacity: isSimulating ? 0.4 : 1 }}
               >
@@ -218,3 +228,16 @@ export default function ComponentNode({
     </g>
   );
 }
+
+// Custom comparator: skip re-render when only sim results change.
+// Voltage/current updates arrive through usePinVoltages/useBranchCurrent hooks.
+export default memo(ComponentNode, (prev, next) => {
+  return (
+    prev.component === next.component &&
+    prev.isSelected === next.isSelected &&
+    prev.zoom === next.zoom &&
+    prev.vizMode === next.vizMode &&
+    prev.showProbes === next.showProbes &&
+    prev.isSimulating === next.isSimulating
+  );
+});

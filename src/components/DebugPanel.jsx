@@ -18,6 +18,16 @@ function fmtI(i) {
   return `${(i * 1e6).toFixed(0)}µA`;
 }
 
+/**
+ * Downsample `data` to at most `maxPoints` evenly-spaced entries.
+ * Returns the original array when it's already short enough.
+ */
+function downsample(data, maxPoints) {
+  if (data.length <= maxPoints) return data;
+  const step = data.length / maxPoints;
+  return Array.from({ length: maxPoints }, (_, i) => data[Math.floor(i * step)]);
+}
+
 function hexToRgb(hex) {
   const m = hex.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
   if (!m) return '255,255,255';
@@ -233,18 +243,18 @@ export default function DebugPanel({
   const history = historyRef?.current ?? [];
 
   // Oscilloscope calculation - Scale based on real volts
-  const getScaleFactor = () => vScale * 5; 
+  const getScaleFactor = () => vScale * 5;
 
-  // Calculate dynamic SCOPE_H based on panel height and header/controls
-  // Moved up to avoid ReferenceError
+  // Downsampled history — cap at 300 display points regardless of buffer size.
+  const displayHistory = downsample(history, 300);
 
   const scopeChannels = watchedPins.map((pinId, ci) => {
-    if (history.length < 2) return null;
+    if (displayHistory.length < 2) return null;
     const color = COLORS[ci % COLORS.length];
 
-    const sliceCount = Math.max(10, Math.floor(history.length / timeScale));
-    const slicedHistory = history.slice(-sliceCount);
-    
+    const sliceCount = Math.max(10, Math.floor(displayHistory.length / timeScale));
+    const slicedHistory = displayHistory.slice(-sliceCount);
+
     const factor = getScaleFactor();
     const pts = slicedHistory.map((h, i) => {
       const x = (i / Math.max(slicedHistory.length - 1, 1)) * SCOPE_W;

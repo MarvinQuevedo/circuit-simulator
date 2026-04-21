@@ -10,6 +10,7 @@ export default class BaseComponent {
   get defaultProperties() { return {}; }
   get propertyLabels() { return {}; }
   get color() { return '#ffffff'; }
+  get domain() { return 'analog'; }
 
   // Returns { minX, minY, maxX, maxY } relative to component origin
   getBounds() {

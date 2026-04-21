@@ -4,6 +4,7 @@ import { circuitReducer, initialState } from './store/circuitReducer';
 import { createComponent, registry } from './core/ComponentDefs';
 import { simulateCircuit } from './core/Solver'; // kept as fallback compat alias
 import { createSession } from './core/solver/index.js';
+import { simulationStore } from './store/simulationStore';
 import Sidebar from './components/Sidebar';
 import Canvas from './components/Canvas';
 import ComponentNode from './components/ComponentNode';
@@ -172,6 +173,7 @@ function App() {
   useEffect(() => {
     if (!state.isSimulating) {
       dispatch({ type: 'SET_SIMULATION_RESULTS', payload: { nodeVoltages: {}, branchCurrents: {} } });
+      simulationStore.publish({ nodeVoltages: {}, branchCurrents: {} }, 0);
       return;
     }
 
@@ -234,6 +236,9 @@ function App() {
           const history = debugHistoryRef.current;
           history.push({ time: simTimeRef.current, nodeVoltages: { ...currentResults.nodeVoltages } });
           if (history.length > 800) history.splice(0, history.length - 800);
+
+          // Publish to external store — does NOT trigger reducer re-render
+          simulationStore.publish(currentResults, simTimeRef.current);
 
           dispatch({ type: 'SIMULATION_TICK', payload: { results: { ...currentResults, updatedComponentProperties: cumulativeUpdates } } });
         }

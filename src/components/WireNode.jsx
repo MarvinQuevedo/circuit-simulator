@@ -1,4 +1,5 @@
-import React, { useRef, useCallback } from 'react';
+import React, { memo, useRef, useCallback } from 'react';
+import { useBranchCurrent } from '../hooks/useSimulation';
 
 const GRID = 10;
 const snap = v => Math.round(v / GRID) * GRID;
@@ -13,16 +14,20 @@ function clientToWorld(clientX, clientY, inverseCTM, svgEl) {
   return pt.matrixTransform(inverseCTM);
 }
 
-export default function WireNode({
+function WireNode({
   wire,
   components,
   isSelected,
   onSelect,
-  simulationCurrent,
+  simulationCurrent: simulationCurrentProp,
   isSimulating,
   dispatch,
   zoom = 1,
 }) {
+  // Subscribe to wire current from the external store.
+  // Falls back to prop when not simulating.
+  const storeCurrent = useBranchCurrent(wire.id);
+  const simulationCurrent = isSimulating ? storeCurrent : (simulationCurrentProp ?? 0);
   // dragRef: { wpIndex: number, svgEl: SVGSVGElement } | null
   const dragRef = useRef(null);
 
@@ -309,6 +314,18 @@ export default function WireNode({
     </g>
   );
 }
+
+// Custom comparator: only re-render when topology or selection changes.
+// Current updates flow through useBranchCurrent above.
+export default memo(WireNode, (prev, next) => {
+  return (
+    prev.wire === next.wire &&
+    prev.isSelected === next.isSelected &&
+    prev.zoom === next.zoom &&
+    prev.isSimulating === next.isSimulating &&
+    prev.components === next.components
+  );
+});
 
 /** Minimum distance from point P to line segment AB */
 function pointToSegmentDist(p, a, b) {

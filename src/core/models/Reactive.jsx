@@ -181,6 +181,154 @@ export class CapacitorModel extends BaseComponent {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// INDUCTOR
+//
+// Uses a Norton companion model (Backward Euler) — no extra variable needed.
+// State: iL (branch current) stored in properties, updated each step.
+//
+// Backward Euler companion:
+//   G_eq = dt / L
+//   I_eq = iL_prev   (Norton current source, flowing n1→n2)
+//
+// Stamp:
+//   G_eq added to A[n1,n1], A[n2,n2], -A[n1,n2], -A[n2,n1]
+//   Z[n1] -= I_eq  (current exits n1)
+//   Z[n2] += I_eq  (current enters n2)
+//
+// State update after solve:
+//   iL(t+dt) ≈ iL(t) + (dt/L) * V_L
+// ─────────────────────────────────────────────────────────────────────────────
+export class InductorModel extends BaseComponent {
+  get type() { return 'INDUCTOR'; }
+  get label() { return 'Inductor'; }
+  get category() { return 'Passive'; }
+  get numPins() { return 2; }
+  get color() { return '#f59e0b'; } // amber
+
+  get defaultProperties() {
+    return { inductance: 1, unit: 'mH', iL: 0, maxCurrent: 5 };
+  }
+
+  get propertyMeta() {
+    return {
+      inductance: { label: 'Inductance', type: 'number', min: 0.001, step: 0.1 },
+      unit: { label: 'Unit', type: 'select', options: ['mH', 'μH', 'H'] },
+      maxCurrent: { label: 'Max Current (A)', type: 'number', min: 0, step: 0.1 },
+    };
+  }
+
+  // Inductor is linear for a given iL_prev (stamp does not depend on node voltages)
+  isLinear() { return true; }
+
+  // Inductor is a short circuit in DC steady-state — modeled as a very small resistance
+  supportsDC() { return true; }
+
+  // No extra variable needed — pure Norton companion
+  getExtraVariablesCount() { return 0; }
+
+  _inductanceHenrys(properties) {
+    const val = properties.inductance ?? 1;
+    const unit = properties.unit ?? 'mH';
+    if (unit === 'μH') return val * 1e-6;
+    if (unit === 'H')  return val;
+    return val * 1e-3; // mH (default)
+  }
+
+  applyMNA(A, Z, componentState, resolvedNodeMap, extraVarIndices, lastNodeVoltages, dt) {
+    if (componentState.properties.damaged) return;
+
+    const L = this._inductanceHenrys(componentState.properties);
+    const iL_prev = componentState.properties.iL ?? 0;
+    const dtSafe = Math.max(dt, 1e-9);
+
+    const G_eq = dtSafe / L;
+    const I_eq = iL_prev; // Norton current source flowing n1→n2
+
+    const n1 = resolvedNodeMap.get(componentState.pins[0].id) || 0;
+    const n2 = resolvedNodeMap.get(componentState.pins[1].id) || 0;
+
+    // Stamp conductance G_eq (like a resistor)
+    if (typeof A.stamp === 'function') {
+      if (n1 > 0) A.stamp(n1 - 1, n1 - 1, G_eq);
+      if (n2 > 0) A.stamp(n2 - 1, n2 - 1, G_eq);
+      if (n1 > 0 && n2 > 0) {
+        A.stamp(n1 - 1, n2 - 1, -G_eq);
+        A.stamp(n2 - 1, n1 - 1, -G_eq);
+      }
+    } else {
+      if (n1 > 0) A[n1 - 1][n1 - 1] += G_eq;
+      if (n2 > 0) A[n2 - 1][n2 - 1] += G_eq;
+      if (n1 > 0 && n2 > 0) {
+        A[n1 - 1][n2 - 1] -= G_eq;
+        A[n2 - 1][n1 - 1] -= G_eq;
+      }
+    }
+
+    // Stamp Norton current source I_eq (flows n1→n2)
+    if (n1 > 0) Z[n1 - 1] -= I_eq;
+    if (n2 > 0) Z[n2 - 1] += I_eq;
+  }
+
+  getUpdatedProperties(componentState, nodeVoltages, extraVarValues, dt) {
+    const L = this._inductanceHenrys(componentState.properties);
+    const iL_prev = componentState.properties.iL ?? 0;
+    const dtSafe = Math.max(dt || 1e-3, 1e-9);
+
+    const vA = nodeVoltages[componentState.pins[0].id] || 0;
+    const vB = nodeVoltages[componentState.pins[1].id] || 0;
+    const V_L = vA - vB;
+
+    // Backward Euler update: iL(t+dt) = iL(t) + (dt/L) * V_L
+    const iLNew = iL_prev + (dtSafe / L) * V_L;
+
+    return { iL: iLNew };
+  }
+
+  extractCurrent(componentState, nodeVoltages, extraVarValues, dt) {
+    if (componentState.properties.damaged) return 0;
+    return componentState.properties.iL ?? 0;
+  }
+
+  checkDamage(componentState, current, voltage) {
+    if (componentState.properties.damaged) return false;
+    const maxI = componentState.properties.maxCurrent ?? 5;
+    if (Math.abs(current) > maxI) {
+      return `Overcurrent: ${Math.abs(current).toFixed(2)}A exceeded ${maxI}A rating. Core saturated/burned.`;
+    }
+    return false;
+  }
+
+  renderShape(componentState, simulationCurrent) {
+    const c = this.color;
+    const active = Math.abs(simulationCurrent || 0) > 0.001;
+    const glow = active ? `drop-shadow(0 0 5px ${c})` : 'none';
+    // Coil arcs: 4 semicircular bumps between x=-24 and x=24
+    const d = 'M -24 0 Q -18 -10 -12 0 Q -6 -10 0 0 Q 6 -10 12 0 Q 18 -10 24 0';
+    return (
+      <g style={{ filter: glow, transition: 'filter 0.2s' }}>
+        <line x1="-30" y1="0" x2="-24" y2="0" stroke={c} strokeWidth="3" />
+        <path d={d} stroke={c} strokeWidth="3" fill="none" />
+        <line x1="24" y1="0" x2="30" y2="0" stroke={c} strokeWidth="3" />
+        {/* + label on pin 0 side */}
+        <text x="-28" y="-8" fill={c} fontSize="8" textAnchor="middle">+</text>
+      </g>
+    );
+  }
+
+  renderIcon() {
+    const c = this.color;
+    const d = 'M -24 0 Q -18 -12 -12 0 Q -6 -12 0 0 Q 6 -12 12 0 Q 18 -12 24 0';
+    return (
+      <g>
+        <line x1="-30" y1="0" x2="-24" y2="0" stroke={c} strokeWidth="4" />
+        <path d={d} stroke={c} strokeWidth="4" fill="none" />
+        <line x1="24" y1="0" x2="30" y2="0" stroke={c} strokeWidth="4" />
+      </g>
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // BJT NPN TRANSISTOR
 //
 // Pins: [0]=Base, [1]=Collector, [2]=Emitter

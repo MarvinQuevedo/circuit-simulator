@@ -93,6 +93,72 @@ export class GroundModel extends BaseComponent {
   }
 }
 
+export class DcCurrentSourceModel extends BaseComponent {
+  get type() { return 'DC_CURRENT_SOURCE'; }
+  get label() { return 'DC Current'; }
+  get category() { return 'Sources'; }
+  get numPins() { return 2; }
+  get color() { return '#10b981'; } // emerald green
+
+  get defaultProperties() { return { current: 0.01 }; }
+  get propertyMeta() {
+    return {
+      current: { label: 'Current (A)', type: 'number', step: 0.001 },
+    };
+  }
+
+  // Ideal current source: no extra variable — inject directly into RHS
+  getExtraVariablesCount() { return 0; }
+  isLinear() { return true; }
+
+  applyMNA(A, Z, componentState, resolvedNodeMap) {
+    const I = componentState.properties.current ?? 0.01;
+    // pin[0] = + terminal (conventional current exits here into circuit)
+    // pin[1] = - terminal (current returns here from circuit)
+    const n1 = resolvedNodeMap.get(componentState.pins[0].id) || 0;
+    const n2 = resolvedNodeMap.get(componentState.pins[1].id) || 0;
+    if (n1 > 0) Z[n1 - 1] += I;
+    if (n2 > 0) Z[n2 - 1] -= I;
+  }
+
+  extractCurrent(componentState) {
+    return componentState.properties.current ?? 0.01;
+  }
+
+  renderShape(componentState) {
+    const c = this.color;
+    return (
+      <g>
+        {/* Body circle */}
+        <circle cx="0" cy="0" r="18" fill="none" stroke={c} strokeWidth="3" />
+        {/* Lead lines */}
+        <line x1="-30" y1="0" x2="-18" y2="0" stroke={c} strokeWidth="3" />
+        <line x1="18" y1="0" x2="30" y2="0" stroke={c} strokeWidth="3" />
+        {/* Arrow shaft (pointing up — conventional current direction from - to +) */}
+        <line x1="0" y1="10" x2="0" y2="-6" stroke={c} strokeWidth="2.5" />
+        {/* Arrowhead pointing up (toward + terminal, pin[0] is on left) */}
+        <polygon points="0,-10 -5,-2 5,-2" fill={c} />
+        {/* + and - labels */}
+        <text x="-26" y="-8" fill={c} fontSize="9" textAnchor="middle">+</text>
+        <text x="26"  y="-8" fill={c} fontSize="9" textAnchor="middle">−</text>
+      </g>
+    );
+  }
+
+  renderIcon() {
+    const c = this.color;
+    return (
+      <g>
+        <circle cx="0" cy="0" r="22" fill="none" stroke={c} strokeWidth="4" />
+        <line x1="-30" y1="0" x2="-22" y2="0" stroke={c} strokeWidth="4" />
+        <line x1="22" y1="0" x2="30" y2="0" stroke={c} strokeWidth="4" />
+        <line x1="0" y1="12" x2="0" y2="-8" stroke={c} strokeWidth="3" />
+        <polygon points="0,-13 -6,-3 6,-3" fill={c} />
+      </g>
+    );
+  }
+}
+
 export class AcVoltageSourceModel extends BaseComponent {
   get type() { return 'AC_VOLTAGE_SOURCE'; }
   get label() { return 'AC Voltage'; }
