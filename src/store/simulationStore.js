@@ -1,7 +1,7 @@
 // Plain JS, no React. Updated from the RAF tick.
 // Keeps simulation results outside the reducer so a publish does not
 // trigger a reducer re-render of the whole tree.
-class SimulationStore {
+export class SimulationStore {
   constructor() {
     this.nodeVoltages = {}
     this.branchCurrents = {}

@@ -19,18 +19,18 @@ export function usePinVoltage(pinId) {
  * Returns a plain object { [pinId]: voltage }.
  */
 export function usePinVoltages(pinIds) {
-  return useSyncExternalStore(
+  const nodeVoltages = useSyncExternalStore(
     cb => {
       const key = pinIds.join(',')
       return simulationStore.subscribe(key, cb)
     },
-    () => {
-      const out = {}
-      for (const id of pinIds) out[id] = simulationStore.getVoltage(id)
-      return out
-    },
-    () => ({})
+    () => simulationStore.nodeVoltages,
+    () => simulationStore.nodeVoltages
   )
+
+  const out = {}
+  for (const id of pinIds) out[id] = nodeVoltages[id] ?? 0
+  return out
 }
 
 /**
