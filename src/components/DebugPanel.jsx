@@ -18,14 +18,11 @@ function fmtI(i) {
   return `${(i * 1e6).toFixed(0)}µA`;
 }
 
-/**
- * Downsample `data` to at most `maxPoints` evenly-spaced entries.
- * Returns the original array when it's already short enough.
- */
-function downsample(data, maxPoints) {
-  if (data.length <= maxPoints) return data;
-  const step = data.length / maxPoints;
-  return Array.from({ length: maxPoints }, (_, i) => data[Math.floor(i * step)]);
+/** Downsample `data` to at most `maxPts` evenly-spaced entries. */
+function downsample(data, maxPts) {
+  if (data.length <= maxPts) return data;
+  const step = data.length / maxPts;
+  return Array.from({ length: maxPts }, (_, i) => data[Math.floor(i * step)]);
 }
 
 function hexToRgb(hex) {
@@ -243,18 +240,19 @@ export default function DebugPanel({
   const history = historyRef?.current ?? [];
 
   // Oscilloscope calculation - Scale based on real volts
-  const getScaleFactor = () => vScale * 5;
+  const getScaleFactor = () => vScale * 5; 
 
-  // Downsampled history — cap at 300 display points regardless of buffer size.
-  const displayHistory = downsample(history, 300);
+  // Calculate dynamic SCOPE_H based on panel height and header/controls
+  // Moved up to avoid ReferenceError
 
   const scopeChannels = watchedPins.map((pinId, ci) => {
-    if (displayHistory.length < 2) return null;
+    if (history.length < 2) return null;
     const color = COLORS[ci % COLORS.length];
 
-    const sliceCount = Math.max(10, Math.floor(displayHistory.length / timeScale));
-    const slicedHistory = displayHistory.slice(-sliceCount);
-
+    const sliceCount = Math.max(10, Math.floor(history.length / timeScale));
+    // Cap display points at 300 — SVG renders 300 pts fast regardless of buffer size.
+    const slicedHistory = downsample(history.slice(-sliceCount), 300);
+    
     const factor = getScaleFactor();
     const pts = slicedHistory.map((h, i) => {
       const x = (i / Math.max(slicedHistory.length - 1, 1)) * SCOPE_W;

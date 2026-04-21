@@ -237,7 +237,8 @@ function App() {
           history.push({ time: simTimeRef.current, nodeVoltages: { ...currentResults.nodeVoltages } });
           if (history.length > 800) history.splice(0, history.length - 800);
 
-          // Publish to external store — does NOT trigger reducer re-render
+          // Publish to external store — ComponentNode/WireNode subscribe here,
+          // so this does NOT trigger a full reducer re-render.
           simulationStore.publish(currentResults, simTimeRef.current);
 
           dispatch({ type: 'SIMULATION_TICK', payload: { results: { ...currentResults, updatedComponentProperties: cumulativeUpdates } } });
@@ -370,7 +371,7 @@ function App() {
           selectedElementId={state.selectedElementId}
           isSimulating={state.isSimulating}
           renderComponent={(comp, wiringHandlers, zoom) => (
-            <ComponentNode 
+            <ComponentNode
               key={comp.id}
               component={comp}
               isSelected={state.selectedElementId === comp.id}
@@ -382,22 +383,19 @@ function App() {
               onPress={(id) => dispatch({ type: 'SET_SWITCH_STATE', payload: { id, closed: true } })}
               onRelease={(id) => dispatch({ type: 'SET_SWITCH_STATE', payload: { id, closed: false } })}
               wiringHandlers={wiringHandlers}
-              simulationCurrent={state.simulationResults.branchCurrents[comp.id] || 0}
               isSimulating={state.isSimulating}
               zoom={zoom}
               showProbes={showDebugger}
               vizMode={state.vizMode}
-              nodeVoltages={state.simulationResults.nodeVoltages}
             />
           )}
           renderWire={(wire, zoom) => (
-            <WireNode 
+            <WireNode
               key={wire.id}
               wire={wire}
               components={state.components}
               isSelected={state.selectedElementId === wire.id}
               onSelect={(id) => dispatch({ type: 'SET_SELECTED', payload: id })}
-              simulationCurrent={state.simulationResults.branchCurrents[wire.id] || 0}
               isSimulating={state.isSimulating}
               dispatch={dispatch}
               zoom={zoom}
