@@ -2,7 +2,8 @@ import React, { useReducer, useEffect, useState, useRef } from 'react';
 import './App.css';
 import { circuitReducer, initialState } from './store/circuitReducer';
 import { createComponent, registry } from './core/ComponentDefs';
-import { simulateCircuit } from './core/Solver';
+import { simulateCircuit } from './core/Solver'; // kept as fallback compat alias
+import { createSession } from './core/solver/index.js';
 import Sidebar from './components/Sidebar';
 import Canvas from './components/Canvas';
 import ComponentNode from './components/ComponentNode';
@@ -174,45 +175,40 @@ function App() {
       return;
     }
 
+    // Build a session for the current topology. The session manages internal
+    // state (vCap, etc.) across sub-steps so App.jsx no longer needs transientPropsMap.
+    let session;
+    try {
+      session = createSession(componentsRef.current, wiresRef.current, { integrator: 'trapezoidal' });
+      session.solveDC();
+    } catch (err) {
+      console.error('[App] Failed to create simulation session:', err);
+      return;
+    }
+
     let frameId;
-    const dt = 0.002; // 2ms steps for better transient stability
-    const subSteps = 10; // 10 steps per frame = 20ms sim per frame
+    const dt = 0.002; // 2ms per sub-step
+    const subSteps = 10; // 10 sub-steps per frame = 20ms sim time per frame
 
     const tick = () => {
       try {
         let currentResults = null;
         let newlyDamagedIds = [];
         let cumulativeUpdates = {};
-        // Transient state to track property changes across sub-steps within a single frame
-        let transientPropsMap = new Map();
-
-        // Use current refs to get the latest state
-        const originalComponents = componentsRef.current;
-        const wires = wiresRef.current;
 
         for (let i = 0; i < subSteps; i++) {
-          // Create a virtual view of components with updates from previous sub-steps applied
-          const currentComponents = originalComponents.map(c => ({
-            ...c,
-            properties: transientPropsMap.has(c.id) 
-              ? { ...c.properties, ...transientPropsMap.get(c.id) } 
-              : c.properties
-          }));
-
-          const results = simulateCircuit(currentComponents, wires, dt);
+          const results = session.step(dt);
           currentResults = results;
-          
+
           if (results.updatedComponentProperties) {
             for (const [id, props] of Object.entries(results.updatedComponentProperties)) {
-              const existing = transientPropsMap.get(id) || {};
-              const merged = { ...existing, ...props };
-              transientPropsMap.set(id, merged);
-              cumulativeUpdates[id] = merged;
+              cumulativeUpdates[id] = { ...(cumulativeUpdates[id] || {}), ...props };
             }
           }
 
           if (enableDamageRef.current) {
-            currentComponents.forEach(comp => {
+            const comps = componentsRef.current;
+            comps.forEach(comp => {
               if (comp.properties.damaged || newlyDamagedIds.some(d => d.id === comp.id)) return;
               const model = registry.get(comp.type);
               if (model && model.checkDamage) {
@@ -224,10 +220,10 @@ function App() {
               }
             });
           }
-          
+
           if (newlyDamagedIds.length > 0) break;
         }
-        
+
         if (newlyDamagedIds.length > 0) {
           dispatch({ type: 'APPLY_DAMAGE', payload: newlyDamagedIds });
           return;
@@ -239,22 +235,17 @@ function App() {
           history.push({ time: simTimeRef.current, nodeVoltages: { ...currentResults.nodeVoltages } });
           if (history.length > 800) history.splice(0, history.length - 800);
 
-          // Use cumulative updates so no state change is lost between frames
-          const finalResults = { 
-            ...currentResults, 
-            updatedComponentProperties: cumulativeUpdates 
-          };
-          dispatch({ type: 'SIMULATION_TICK', payload: { results: finalResults } });
+          dispatch({ type: 'SIMULATION_TICK', payload: { results: { ...currentResults, updatedComponentProperties: cumulativeUpdates } } });
         }
       } catch (err) {
-        console.error("Simulation error", err);
+        console.error('[App] Simulation error', err);
       }
 
       frameId = requestAnimationFrame(tick);
     };
 
     frameId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frameId);
+    return () => { cancelAnimationFrame(frameId); session?.dispose(); };
   }, [state.isSimulating]);
 
   const handleTogglePin = (pinId) => {

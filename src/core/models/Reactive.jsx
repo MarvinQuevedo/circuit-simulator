@@ -1,5 +1,6 @@
 import BaseComponent from './BaseComponent.jsx';
 import React from 'react';
+import { resolveIntegrator, getSessionIntegrator } from '../solver/Integrator.js';
 
 // ─── Real-world transistor model libraries ────────────────────────────────────
 export const NPN_MODELS = {
@@ -49,35 +50,62 @@ export class CapacitorModel extends BaseComponent {
   }
   get color() { return '#818cf8'; } // indigo
 
-  applyMNA(A, Z, componentState, resolvedNodeMap, extraVarIndices, lastNodeVoltages, dt) {
+  // Capacitors are linear (stamps do not depend on X)
+  isLinear() { return true; }
+
+  // Capacitors are open circuits in DC — handled specially by DCOperatingPoint
+  supportsDC() { return false; }
+
+  /**
+   * initDC: prime vCap from the DC node voltages (capacitor acts as open;
+   * DC voltage across it comes from resistor divider, not from charging).
+   */
+  initDC(componentState, nodeVoltages) {
+    // vCap will be set by the session from nodeVoltages after DC solve.
+    // This hook is here for completeness; the actual update happens in session.solveDC().
+  }
+
+  applyMNA(A, Z, componentState, resolvedNodeMap, extraVarIndices, lastNodeVoltages, dt, _alpha) {
     if (componentState.properties.damaged) return;
-    
+
     // Convert μF to F for math
     const val_uf = componentState.properties.capacitance ?? 100;
     const C = val_uf * 1e-6;
     const vCap = componentState.properties.vCap ?? 0;
-    
-    // Transient companion model (Backward Euler/Thevenin equivalent)
-    // I = C * dv/dt => I = C/dt * (v(t) - v(t-dt))
-    // I = G_eq * v(t) - G_eq * v(t-dt)
-    // G_eq = C / dt
-    // I_eq = G_eq * vCap
-    const G_eq = C / Math.max(dt, 1e-6);
-    const I_eq = G_eq * vCap;
+
+    // Integrator set by the active session via setSessionIntegrator().
+    const integ = getSessionIntegrator();
+
+    // iPrev tracks capacitor current for the Trapezoidal history term.
+    const iPrev = componentState.properties.iCap ?? 0;
+
+    const dtSafe = Math.max(dt, 1e-9);
+    const { Geq: G_eq, Ieq: I_eq } = integ.companionCapacitor(C, vCap, iPrev, dtSafe);
 
     const n1 = resolvedNodeMap.get(componentState.pins[0].id) || 0;
     const n2 = resolvedNodeMap.get(componentState.pins[1].id) || 0;
 
-    // Stamp G_eq (like a resistor)
-    if (n1 > 0) A[n1 - 1][n1 - 1] += G_eq;
-    if (n2 > 0) A[n2 - 1][n2 - 1] += G_eq;
-    if (n1 > 0 && n2 > 0) {
-      A[n1 - 1][n2 - 1] -= G_eq;
-      A[n2 - 1][n1 - 1] -= G_eq;
+    // Stamp G_eq (like a conductance)
+    if (typeof A.stamp === 'function') {
+      // SparseMatrix API
+      if (n1 > 0) A.stamp(n1 - 1, n1 - 1, G_eq);
+      if (n2 > 0) A.stamp(n2 - 1, n2 - 1, G_eq);
+      if (n1 > 0 && n2 > 0) {
+        A.stamp(n1 - 1, n2 - 1, -G_eq);
+        A.stamp(n2 - 1, n1 - 1, -G_eq);
+      }
+    } else {
+      // Dense Array API (legacy Solver.js path)
+      if (n1 > 0) A[n1 - 1][n1 - 1] += G_eq;
+      if (n2 > 0) A[n2 - 1][n2 - 1] += G_eq;
+      if (n1 > 0 && n2 > 0) {
+        A[n1 - 1][n2 - 1] -= G_eq;
+        A[n2 - 1][n1 - 1] -= G_eq;
+      }
     }
-    
-    // Stamp I_eq (current source in parallel with G_eq)
-    // It flows from Pin 0 to Pin 1 if vCap is positive (vCap = V0 - V1)
+
+    // Stamp I_eq (Norton current source in parallel with G_eq)
+    // Flows from Pin 0 toward Pin 1 if vCap > 0
     if (n1 > 0) Z[n1 - 1] += I_eq;
     if (n2 > 0) Z[n2 - 1] -= I_eq;
   }
@@ -95,10 +123,19 @@ export class CapacitorModel extends BaseComponent {
     return C * (V_curr - vCap) / Math.max(dt, 1e-6);
   }
 
-  getUpdatedProperties(componentState, nodeVoltages) {
+  getUpdatedProperties(componentState, nodeVoltages, extraVarValues, dt) {
     const vA = nodeVoltages[componentState.pins[0].id] || 0;
     const vB = nodeVoltages[componentState.pins[1].id] || 0;
-    return { vCap: vA - vB };
+    const vCapNew = vA - vB;
+
+    const val_uf = componentState.properties.capacitance ?? 100;
+    const C = val_uf * 1e-6;
+    const vCapPrev = componentState.properties.vCap ?? 0;
+    const dtSafe = Math.max(dt || 1e-3, 1e-9);
+    // iCap used as history term by Trapezoidal on the next step
+    const iCap = C * (vCapNew - vCapPrev) / dtSafe;
+
+    return { vCap: vCapNew, iCap };
   }
 
   checkDamage(componentState, current, voltage) {
@@ -157,6 +194,9 @@ export class CapacitorModel extends BaseComponent {
 export class NpnTransistorModel extends BaseComponent {
   get type() { return 'NPN'; }
   get label() { return 'NPN Transistor'; }
+
+  // BJT is nonlinear — requires Newton iteration
+  isLinear() { return false; }
   get category() { return 'Semiconductors'; }
   get numPins() { return 3; } // Base, Collector, Emitter
   get defaultProperties() { return { modelId: '2N3904', useCustom: false, beta: 100, Vbe: 0.65, Ron: 10, maxIc: 0.2 }; }
@@ -202,6 +242,12 @@ export class NpnTransistorModel extends BaseComponent {
     const Vbe = vB - vE;
     const Vce = vC - vE;
 
+    // Dual-API stamp helper: supports both dense Array and SparseMatrix
+    const stampA = (r, c, v) => {
+      if (typeof A.stamp === 'function') A.stamp(r, c, v);
+      else A[r][c] += v;
+    };
+
     // ── Stamp base-emitter junction diode ──
     let G_be = 1e-9;
     let Ieq = 0;
@@ -211,11 +257,11 @@ export class NpnTransistorModel extends BaseComponent {
       Ieq  = Vbe_on * G_be; // Norton current to maintain Vbe_on drop
     }
 
-    if (nB > 0) A[nB - 1][nB - 1] += G_be;
-    if (nE > 0) A[nE - 1][nE - 1] += G_be;
+    if (nB > 0) stampA(nB - 1, nB - 1, G_be);
+    if (nE > 0) stampA(nE - 1, nE - 1, G_be);
     if (nB > 0 && nE > 0) {
-      A[nB - 1][nE - 1] -= G_be;
-      A[nE - 1][nB - 1] -= G_be;
+      stampA(nB - 1, nE - 1, -G_be);
+      stampA(nE - 1, nB - 1, -G_be);
     }
     if (nB > 0) Z[nB - 1] += Ieq;
     if (nE > 0) Z[nE - 1] -= Ieq;
@@ -231,10 +277,10 @@ export class NpnTransistorModel extends BaseComponent {
         // ── Active region: VCCS stamp ──
         // Ic = Gm*(Vb - Ve - Vbe_on), extracted from C, injected into E
         const Gm = beta / Ron;
-        if (nC > 0 && nB > 0) A[nC - 1][nB - 1] += Gm;
-        if (nC > 0 && nE > 0) A[nC - 1][nE - 1] -= Gm;
-        if (nE > 0 && nB > 0) A[nE - 1][nB - 1] -= Gm;
-        if (nE > 0)            A[nE - 1][nE - 1] += Gm;
+        if (nC > 0 && nB > 0) stampA(nC - 1, nB - 1, Gm);
+        if (nC > 0 && nE > 0) stampA(nC - 1, nE - 1, -Gm);
+        if (nE > 0 && nB > 0) stampA(nE - 1, nB - 1, -Gm);
+        if (nE > 0)            stampA(nE - 1, nE - 1, Gm);
         if (nC > 0) Z[nC - 1] += Gm * Vbe_on;
         if (nE > 0) Z[nE - 1] -= Gm * Vbe_on;
       } else {
@@ -242,11 +288,11 @@ export class NpnTransistorModel extends BaseComponent {
         // Model Vce ≈ Vce_sat via Norton equivalent: G_sat in parallel with I_sat
         const G_sat = 1.0 / 0.01; // 100 S → effectively clamps Vce
         const I_sat = G_sat * Vce_sat;
-        if (nC > 0) A[nC - 1][nC - 1] += G_sat;
-        if (nE > 0) A[nE - 1][nE - 1] += G_sat;
+        if (nC > 0) stampA(nC - 1, nC - 1, G_sat);
+        if (nE > 0) stampA(nE - 1, nE - 1, G_sat);
         if (nC > 0 && nE > 0) {
-          A[nC - 1][nE - 1] -= G_sat;
-          A[nE - 1][nC - 1] -= G_sat;
+          stampA(nC - 1, nE - 1, -G_sat);
+          stampA(nE - 1, nC - 1, -G_sat);
         }
         if (nC > 0) Z[nC - 1] += I_sat;
         if (nE > 0) Z[nE - 1] -= I_sat;
@@ -370,6 +416,12 @@ export class PnpTransistorModel extends NpnTransistorModel {
     const Veb = vE - vB; // PNP uses V_EB
     const Vec = vE - vC; // PNP: Vec = Ve - Vc
 
+    // Dual-API stamp helper
+    const stampA = (r, c, v) => {
+      if (typeof A.stamp === 'function') A.stamp(r, c, v);
+      else A[r][c] += v;
+    };
+
     // ── Stamp emitter-base junction diode (reversed polarity) ──
     let G_eb = 1e-9;
     let Ieq = 0;
@@ -380,11 +432,11 @@ export class PnpTransistorModel extends NpnTransistorModel {
     }
 
     // Stamp current from E to B (reversed)
-    if (nE > 0) A[nE - 1][nE - 1] += G_eb;
-    if (nB > 0) A[nB - 1][nB - 1] += G_eb;
+    if (nE > 0) stampA(nE - 1, nE - 1, G_eb);
+    if (nB > 0) stampA(nB - 1, nB - 1, G_eb);
     if (nE > 0 && nB > 0) {
-      A[nE - 1][nB - 1] -= G_eb;
-      A[nB - 1][nE - 1] -= G_eb;
+      stampA(nE - 1, nB - 1, -G_eb);
+      stampA(nB - 1, nE - 1, -G_eb);
     }
     if (nE > 0) Z[nE - 1] += Ieq;
     if (nB > 0) Z[nB - 1] -= Ieq;
@@ -396,21 +448,21 @@ export class PnpTransistorModel extends NpnTransistorModel {
       if (Vec >= Vce_sat) {
         // Active: VCCS — Ic = Gm*(Ve - Vb - Vbe_on), extracted from E, injected into C
         const Gm = beta / Ron;
-        if (nE > 0)            A[nE - 1][nE - 1] += Gm;
-        if (nE > 0 && nB > 0) A[nE - 1][nB - 1] -= Gm;
-        if (nC > 0 && nE > 0) A[nC - 1][nE - 1] -= Gm;
-        if (nC > 0 && nB > 0) A[nC - 1][nB - 1] += Gm;
+        if (nE > 0)            stampA(nE - 1, nE - 1, Gm);
+        if (nE > 0 && nB > 0) stampA(nE - 1, nB - 1, -Gm);
+        if (nC > 0 && nE > 0) stampA(nC - 1, nE - 1, -Gm);
+        if (nC > 0 && nB > 0) stampA(nC - 1, nB - 1, Gm);
         if (nE > 0) Z[nE - 1] += Gm * Vbe_on;
         if (nC > 0) Z[nC - 1] -= Gm * Vbe_on;
       } else {
         // Saturation: clamp Vec ≈ Vce_sat
         const G_sat = 1.0 / 0.01;
         const I_sat = G_sat * Vce_sat;
-        if (nE > 0) A[nE - 1][nE - 1] += G_sat;
-        if (nC > 0) A[nC - 1][nC - 1] += G_sat;
+        if (nE > 0) stampA(nE - 1, nE - 1, G_sat);
+        if (nC > 0) stampA(nC - 1, nC - 1, G_sat);
         if (nE > 0 && nC > 0) {
-          A[nE - 1][nC - 1] -= G_sat;
-          A[nC - 1][nE - 1] -= G_sat;
+          stampA(nE - 1, nC - 1, -G_sat);
+          stampA(nC - 1, nE - 1, -G_sat);
         }
         if (nE > 0) Z[nE - 1] += I_sat;
         if (nC > 0) Z[nC - 1] -= I_sat;

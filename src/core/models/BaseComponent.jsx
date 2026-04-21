@@ -56,6 +56,48 @@ export default class BaseComponent {
     return null;
   }
 
+  // ── Phase 1: Solver extension hooks ────────────────────────────────────────
+
+  /**
+   * Declare the nonzero (row, col) slots this component will stamp.
+   * Called once during topology build. Override for sparsity efficiency.
+   * Default: the session falls back to declaring a dense block over all
+   * connected nodes + extra variable indices.
+   *
+   * @param {SparseMatrixBuilder} builder
+   * @param {object} componentState
+   * @param {Map} resolvedNodeMap  — pinId → MNA index (0 = ground)
+   * @param {number[]} extraVarIndices — MNA indices for this component's extra vars
+   */
+  declareSparsity(builder, componentState, resolvedNodeMap, extraVarIndices) {
+    // Default: dense block (handled by session when this method is not overridden)
+  }
+
+  /**
+   * Returns true if this component's stamps do NOT depend on X (the solution).
+   * Linear components (resistors, capacitors, linear voltage sources) return true.
+   * Nonlinear components (diodes, BJTs) return false.
+   * Used to skip Newton outer loop when all components are linear.
+   */
+  isLinear() { return true; }
+
+  /**
+   * Returns true if this component has a meaningful DC behavior.
+   * Capacitors override to return false (they become open circuits in DC).
+   */
+  supportsDC() { return true; }
+
+  /**
+   * Called once after the DC operating point solve, before transient begins.
+   * Allows components to prime internal state (e.g., vCap) from the DC solution.
+   *
+   * @param {object} componentState
+   * @param {object} nodeVoltages — pinId → voltage
+   */
+  initDC(componentState, nodeVoltages) {}
+
+  // ── End Phase 1 hooks ────────────────────────────────────────────────────
+
   // Determines if the component should be destroyed based on current or voltage limits
   checkDamage(componentState, current, voltage) {
     return false; // By default indestructible
