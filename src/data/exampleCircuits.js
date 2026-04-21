@@ -239,7 +239,7 @@ const digitalShowcase = () => {
       mkDecoder(Dec, 560, 480), 
       mk7Seg(Seg, 760, 480),
 
-      mkGndComp('icg1', 360, 540), mkGndComp('icg2', 560, 540), mkGndComp('icg3', 800, 480),
+      mkGndComp('icg1', 360, 550), mkGndComp('icg2', 560, 550), mkGndComp('icg3', 800, 545),
     ],
     wires: [
       W('pw1', pId(Vcc, '1'), pId(Gnd, '0')),
@@ -248,8 +248,8 @@ const digitalShowcase = () => {
       W('bu1', pId(Vcc, '0'), pId(SwA, '0'), [{x: 70, y: 20}, {x: 70, y: 140}]),
       W('bu2', pId(SwA, '0'), pId(SwB, '0')),
       W('bu3', pId(SwB, '0'), pId(PushClk, '0')),
-      W('bu4', pId(PushClk, '0'), pId(Cnt, '9'), [{x: 70, y: 600}, {x: 360, y: 600}, {x: 360, y: 440}]),
-      W('bu5', pId(Cnt, '9'), pId(Dec, '12'), [{x: 360, y: 435}, {x: 560, y: 435}]),
+      W('bu4', pId(PushClk, '0'), pId(Cnt, '9'), [{x: 70, y: 430}, {x: 360, y: 430}]),
+      W('bu5', pId(Cnt, '9'), pId(Dec, '12'), [{x: 360, y: 430}, {x: 560, y: 430}]),
       // R1/R2 are floating (Logic 0) so the counter can count.
 
       // Logic "A" Bus (Connects SwA output to AND0 and XOR0)
@@ -293,86 +293,89 @@ const cascadedCounterExample = () => {
   const BtnRst = 'btn_rst', ResRst = 'res_rst';
   const Vcc = 'pwr_vcc', Gnd = 'pwr_gnd';
 
+  // Layout:
+  //   Tens  row y=180:  C2(340) → D2(500) → S2(660)
+  //   Units row y=380:  C1(340) → D1(500) → S1(660)
+  //   Control column x=120: clock(220) + reset(380)
   return {
     components: [
-      // Column 0: Power Source
       mkSrc(Vcc, 60, 40, 5), mkGndComp(Gnd, 120, 40),
-      
-      // Column 1: Control Components
-      mkClock(Clk, 100, 220, 4), // 4 Hz clock
-      mkPushButton(BtnRst, 100, 400, 'Master Reset'),
-      mkRes(ResRst, 100, 470, 1000, 90), mkGndComp('grst', 100, 510),
 
-      // Column 2: Digital Logic (Tens)
-      mkCounter(C2, 320, 150),
-      mkDecoder(D2, 480, 150),
-      mk7Seg(S2, 640, 150),
+      mkClock(Clk, 120, 220, 4),
+      mkGndComp('g_clk', 80, 220),
+      mkPushButton(BtnRst, 120, 380, 'Master Reset'),
+      mkRes(ResRst, 120, 450, 1000, 90),
+      mkGndComp('g_rst', 120, 490),
 
-      // Column 2: Digital Logic (Units)
-      mkCounter(C1, 320, 350),
-      mkDecoder(D1, 480, 350),
-      mk7Seg(S1, 720, 150),
+      // Tens row
+      mkCounter(C2, 340, 180),
+      mkDecoder(D2, 500, 180),
+      mk7Seg(S2, 660, 180),
 
-      // Support Grounds
-      mkGndComp('g1', 80, 220),           // Clock ground
-      mkGndComp('gc1', 320, 410), mkGndComp('gc2', 320, 210),
-      mkGndComp('gd1', 480, 410), mkGndComp('gd2', 480, 210),
-      mkGndComp('gs1', 720, 210), mkGndComp('gs2', 640, 210),
+      // Units row
+      mkCounter(C1, 340, 380),
+      mkDecoder(D1, 500, 380),
+      mk7Seg(S1, 660, 380),
+
+      // Ground components — placed just below each IC's GND pin
+      mkGndComp('gc2', 340, 245), mkGndComp('gc1', 340, 445),
+      mkGndComp('gd2', 500, 235), mkGndComp('gd1', 500, 435),
+      mkGndComp('gs2', 700, 250), mkGndComp('gs1', 700, 450),
     ],
     wires: [
-      W('w_p1', pId(Vcc, '1'), pId(Gnd, '0')),
-      
-      // Vertical VCC Bus at X=40
-      W('vcc_b1', pId(Vcc, '0'), pId(BtnRst, '0'), [{x: 40, y: 40}, {x: 40, y: 400}]),
-      W('vcc_b2', pId(Vcc, '0'), pId(C2, '9'), [{x: 40, y: 40}, {x: 40, y: 100}, {x: 320, y: 100}]),
-      W('vcc_b3', pId(C2, '9'), pId(D2, '12'), [{x: 320, y: 100}, {x: 480, y: 100}]),
-      W('vcc_b4', pId(D2, '12'), pId(C1, '9'), [{x: 480, y: 100}, {x: 520, y: 100}, {x: 520, y: 300}, {x: 320, y: 300}]),
-      W('vcc_b5', pId(C1, '9'), pId(D1, '12'), [{x: 320, y: 300}, {x: 480, y: 300}]),
+      W('w_p', pId(Vcc, '1'), pId(Gnd, '0')),
 
-      // Tie R2 to VCC (X=280 Bus)
-      W('wr_c2v', pId(C2, '2'), pId(C2, '9'), [{x: 280, y: 160}, {x: 280, y: 100}, {x: 320, y: 100}]),
-      W('wr_c1v', pId(C1, '2'), pId(C1, '9'), [{x: 280, y: 360}, {x: 280, y: 300}, {x: 320, y: 300}]),
+      // ── VCC bus ──────────────────────────────────────────────────────────
+      // Tens row VCC at y=100
+      W('vcc_c2', pId(Vcc, '0'), pId(C2, '9'), [{x: 40, y: 40}, {x: 40, y: 100}, {x: 340, y: 100}]),
+      W('vcc_d2', pId(C2, '9'), pId(D2, '12'), [{x: 340, y: 100}, {x: 500, y: 100}]),
+      // Drop to y=280 for units row
+      W('vcc_c1', pId(D2, '12'), pId(C1, '9'), [{x: 500, y: 100}, {x: 240, y: 100}, {x: 240, y: 280}, {x: 340, y: 280}]),
+      W('vcc_d1', pId(C1, '9'), pId(D1, '12'), [{x: 340, y: 280}, {x: 500, y: 280}]),
+      // Button input is VCC
+      W('vcc_btn', pId(C1, '9'), pId(BtnRst, '0'), [{x: 340, y: 280}, {x: 40, y: 280}, {x: 40, y: 380}, {x: 90, y: 380}]),
 
-      // Reset Signal Pull-down
-      W('wr_d', pId(BtnRst, '1'), pId(ResRst, '0')),
-      W('wr_g', pId(ResRst, '1'), pId('grst', '0')),
+      // ── R2 tied HIGH (reset requires BOTH R1 and R2 HIGH) ────────────────
+      W('r2_c2', pId(C2, '2'), pId(C2, '9'), [{x: 300, y: 190}, {x: 300, y: 100}]),
+      W('r2_c1', pId(C1, '2'), pId(C1, '9'), [{x: 300, y: 390}, {x: 300, y: 280}]),
 
-      // Reset Master Bus (Connect BtnRst OUT to both R1)
-      W('wr_m1', pId(BtnRst, '1'), pId(C1, '1'), [{x: 160, y: 400}, {x: 160, y: 340}, {x: 280, y: 340}]),
-      W('wr_m2', pId(C1, '1'), pId(C2, '1'), [{x: 280, y: 340}, {x: 220, y: 340}, {x: 220, y: 140}, {x: 280, y: 140}]),
+      // ── Clock ────────────────────────────────────────────────────────────
+      W('w_clk', pId(Clk, '1'), pId(C1, '0'), [{x: 160, y: 220}, {x: 160, y: 350}, {x: 300, y: 350}]),
+      W('w_cg',  pId(Clk, '0'), pId('g_clk', '0')),
 
-      // Clock Signal (Connect Clock OUT to Units CLK)
-      W('w_c1', pId(Clk, '1'), pId(C1, '0'), [{x: 140, y: 220}, {x: 140, y: 320}, {x: 280, y: 320}]),
-      W('w_cg1', pId(Clk, '0'), pId('g1', '0')),
+      // ── Reset: pull-down + R1 bus ─────────────────────────────────────────
+      W('w_rpull', pId(BtnRst, '1'), pId(ResRst, '0')),
+      W('w_rgnd',  pId(ResRst, '1'), pId('g_rst', '0')),
+      W('rst_c1',  pId(BtnRst, '1'), pId(C1, '1'), [{x: 160, y: 380}, {x: 160, y: 370}, {x: 300, y: 370}]),
+      W('rst_c2',  pId(C1, '1'), pId(C2, '1'), [{x: 300, y: 370}, {x: 220, y: 370}, {x: 220, y: 170}, {x: 300, y: 170}]),
 
-      // Grounds for ICs
-      W('w_cg2', pId(C1, '8'), pId('gc1', '0')), W('w_cg3', pId(C2, '8'), pId('gc2', '0')),
-      W('w_dg1', pId(D1, '11'), pId('gd1', '0')), W('w_dg2', pId(D2, '11'), pId('gd2', '0')),
-      W('w_sg1', pId(S1, '8'), pId('gs1', '0')), W('w_sg2', pId(S2, '8'), pId('gs2', '0')),
+      // ── Cascade: C1 OVF → C2 CLK ─────────────────────────────────────────
+      W('w_cas', pId(C1, '7'), pId(C2, '0'), [{x: 380, y: 430}, {x: 380, y: 460}, {x: 220, y: 460}, {x: 220, y: 150}, {x: 300, y: 150}]),
 
-      // Cascade Line: C1 Overflow -> C2 Clock
-      W('w_cas', pId(C1, '7'), pId(C2, '0'), [{x: 370, y: 390}, {x: 370, y: 440}, {x: 250, y: 440}, {x: 250, y: 120}, {x: 280, y: 120}]),
+      // ── IC grounds ───────────────────────────────────────────────────────
+      W('w_gc2', pId(C2, '8'), pId('gc2', '0')),
+      W('w_gc1', pId(C1, '8'), pId('gc1', '0')),
+      W('w_gd2', pId(D2, '11'), pId('gd2', '0')),
+      W('w_gd1', pId(D1, '11'), pId('gd1', '0')),
+      W('w_gs2', pId(S2, '8'), pId('gs2', '0')),
+      W('w_gs1', pId(S1, '8'), pId('gs1', '0')),
 
-      // BCD Units (Bottom -> Middle display)
-      W('du0', pId(C1, '3'), pId(D1, '0')), W('du1', pId(C1, '4'), pId(D1, '1')),
-      W('du2', pId(C1, '5'), pId(D1, '2')), W('du3', pId(C1, '6'), pId(D1, '3')),
-      W('dt0', pId(C2, '3'), pId(D2, '0')), W('dt1', pId(C2, '4'), pId(D2, '1')),
-      W('dt2', pId(C2, '5'), pId(D2, '2')), W('dt3', pId(C2, '6'), pId(D2, '3')),
+      // ── BCD data: counter → decoder ──────────────────────────────────────
+      W('u0', pId(C1, '3'), pId(D1, '0')), W('u1', pId(C1, '4'), pId(D1, '1')),
+      W('u2', pId(C1, '5'), pId(D1, '2')), W('u3', pId(C1, '6'), pId(D1, '3')),
+      W('t0', pId(C2, '3'), pId(D2, '0')), W('t1', pId(C2, '4'), pId(D2, '1')),
+      W('t2', pId(C2, '5'), pId(D2, '2')), W('t3', pId(C2, '6'), pId(D2, '3')),
 
-      // Seven Segment 2 (Tens)
-      W('s2_a', pId(D2, '4'), pId(S2, '0')), W('s2_b', pId(D2, '5'), pId(S2, '1')),
-      W('s2_c', pId(D2, '6'), pId(S2, '2')), W('s2_d', pId(D2, '7'), pId(S2, '3')),
-      W('s2_e', pId(D2, '8'), pId(S2, '4')), W('s2_f', pId(D2, '9'), pId(S2, '5')),
-      W('s2_g', pId(D2, '10'), pId(S2, '6')),
+      // ── Decoder → 7-segment (direct, auto-routed) ─────────────────────────
+      W('s2a', pId(D2, '4'), pId(S2, '0')), W('s2b', pId(D2, '5'), pId(S2, '1')),
+      W('s2c', pId(D2, '6'), pId(S2, '2')), W('s2d', pId(D2, '7'), pId(S2, '3')),
+      W('s2e', pId(D2, '8'), pId(S2, '4')), W('s2f', pId(D2, '9'), pId(S2, '5')),
+      W('s2g', pId(D2, '10'), pId(S2, '6')),
 
-      // Seven Segment 1 (Units) - Routed to avoid D2/S2 overlap
-      W('s1_a', pId(D1, '4'), pId(S1, '0'), [{x: 540, y: 320}, {x: 540, y: 120}, {x: 680, y: 120}]),
-      W('s1_b', pId(D1, '5'), pId(S1, '1'), [{x: 550, y: 330}, {x: 550, y: 130}, {x: 680, y: 130}]),
-      W('s1_c', pId(D1, '6'), pId(S1, '2'), [{x: 560, y: 340}, {x: 560, y: 140}, {x: 680, y: 140}]),
-      W('s1_d', pId(D1, '7'), pId(S1, '3'), [{x: 570, y: 350}, {x: 570, y: 150}, {x: 680, y: 150}]),
-      W('s1_e', pId(D1, '8'), pId(S1, '4'), [{x: 580, y: 360}, {x: 580, y: 160}, {x: 680, y: 160}]),
-      W('s1_f', pId(D1, '9'), pId(S1, '5'), [{x: 590, y: 370}, {x: 590, y: 170}, {x: 680, y: 170}]),
-      W('s1_g', pId(D1, '10'), pId(S1, '6'), [{x: 600, y: 380}, {x: 600, y: 180}, {x: 680, y: 180}]),
+      W('s1a', pId(D1, '4'), pId(S1, '0')), W('s1b', pId(D1, '5'), pId(S1, '1')),
+      W('s1c', pId(D1, '6'), pId(S1, '2')), W('s1d', pId(D1, '7'), pId(S1, '3')),
+      W('s1e', pId(D1, '8'), pId(S1, '4')), W('s1f', pId(D1, '9'), pId(S1, '5')),
+      W('s1g', pId(D1, '10'), pId(S1, '6')),
     ]
   };
 };

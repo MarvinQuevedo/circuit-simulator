@@ -86,10 +86,22 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  font-weight: 600;
 }
 
 .sim-btn:hover {
   background: rgba(34, 197, 94, 0.2);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.15);
+}
+
+.sim-btn.sim-active {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.5);
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.12);
+}
+
+.tb-toggle-label:hover {
+  filter: brightness(1.15);
 }
 
 .pulse-dot {

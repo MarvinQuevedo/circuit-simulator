@@ -436,7 +436,7 @@ export class Counter4BitModel extends BaseComponent {
   get label() { return 'Counter (Binary/Decade)'; }
   get category() { return 'Digital'; }
   get numPins() { return 10; }
-  get defaultProperties() { return { count: 0, lastClock: 0, maxCount: 10 }; }
+  get defaultProperties() { return { count: 0, lastClock: null, maxCount: 10 }; }
   get propertyMeta() {
     return {
       maxCount: { label: 'Reset at', type: 'number', min: 2, max: 16 },
@@ -500,34 +500,35 @@ export class Counter4BitModel extends BaseComponent {
     const vR1 = nodeVoltages[componentState.pins[1].id] || 0;
     const vR2 = nodeVoltages[componentState.pins[2].id] || 0;
     
-    // TTL Hysteresis (Schmidt Trigger behavior) for CLK
-    // Standard TTL: Low < 0.8V, High > 2.0V
-    let clkLevel = componentState.properties.lastClock || 0;
+    // TTL hysteresis: Low < 0.8V, High > 2.0V (Schmitt-trigger style)
+    const lastClockRaw = componentState.properties.lastClock;
+    let clkLevel = (lastClockRaw === null || lastClockRaw === undefined) ? 0 : lastClockRaw;
     if (vClk > 2.0) clkLevel = 1;
     else if (vClk < 0.8) clkLevel = 0;
+
+    // First tick after sim start: capture initial clock state without counting
+    if (lastClockRaw === null || lastClockRaw === undefined) {
+      return { lastClock: clkLevel };
+    }
 
     const r1Level = getLogicLevel(vR1);
     const r2Level = getLogicLevel(vR2);
     const rstActive = r1Level && r2Level;
 
     let count = componentState.properties.count || 0;
-    const lastClock = componentState.properties.lastClock || 0;
+    const lastClock = lastClockRaw;
     const maxCount = componentState.properties.maxCount || 10;
-    
+
     let changed = false;
     if (rstActive) {
-        if (count !== 0) {
-            count = 0;
-            changed = true;
-        }
+      if (count !== 0) { count = 0; changed = true; }
     } else if (clkLevel && !lastClock) {
-        // Rising edge trigger (More intuitive for manual buttons)
-        count = (count + 1) % maxCount;
-        changed = true;
+      count = (count + 1) % maxCount;
+      changed = true;
     }
-    
+
     if (changed || clkLevel !== lastClock) {
-        return { count, lastClock: clkLevel };
+      return { count, lastClock: clkLevel };
     }
     return null;
   }

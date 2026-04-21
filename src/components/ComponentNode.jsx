@@ -112,17 +112,33 @@ function ComponentNode({
   const model = registry.get(type);
   const bounds = model ? model.getBounds() : { minX: -40, minY: -30, maxX: 40, maxY: 30 };
 
+  const isInteractive = type === 'SWITCH' || type === 'PUSH_BUTTON';
+  const simCursor = isInteractive ? 'pointer' : 'default';
+  const activeCursor = isDragging ? 'grabbing' : isSimulating ? simCursor : 'grab';
+
   return (
-    <g 
+    <g
       transform={`translate(${x}, ${y}) rotate(${rotation})`}
-      style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
+      style={{ cursor: activeCursor }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
     >
-      <rect 
-        x={bounds.minX} y={bounds.minY} width={bounds.maxX - bounds.minX} height={bounds.maxY - bounds.minY} 
-        fill="transparent" 
+      {/* Interactive glow when simulating and clickable */}
+      {isSimulating && isInteractive && (
+        <rect
+          x={bounds.minX - 4} y={bounds.minY - 4}
+          width={bounds.maxX - bounds.minX + 8} height={bounds.maxY - bounds.minY + 8}
+          fill="none"
+          stroke="rgba(96,165,250,0.35)"
+          strokeWidth="2"
+          rx="6"
+          style={{ pointerEvents: 'none', filter: 'blur(2px)' }}
+        />
+      )}
+      <rect
+        x={bounds.minX} y={bounds.minY} width={bounds.maxX - bounds.minX} height={bounds.maxY - bounds.minY}
+        fill="transparent"
       >
         <title>{tooltipText}</title>
       </rect>

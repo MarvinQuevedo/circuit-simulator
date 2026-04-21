@@ -314,35 +314,76 @@ function App() {
         </h1>
 
         {/* Desktop Only Actions */}
-        <div className="desktop-actions" style={{ display: 'flex', gap: '10px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-            <input 
-              type="checkbox" 
-              checked={state.enableDamage} 
-              onChange={() => dispatch({ type: 'TOGGLE_DAMAGE' })} 
-            />
-            Damage Physics
-          </label>
-          <button 
-            className="tb-btn" 
-            onClick={() => dispatch({ type: 'TOGGLE_VIZ_MODE' })}
-            style={{ minWidth: '100px', background: state.vizMode === 'analog' ? 'rgba(96,165,250,0.1)' : 'transparent' }}
-          >
-            {state.vizMode === 'analog' ? '📈 Analog Mode' : '🔢 Digital Mode'}
-          </button>
-          <button className="tb-btn" onClick={() => setShowExamples(true)}>🔬 Examples</button>
+        <div className="desktop-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {/* Utility group */}
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', paddingRight: '8px', borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+            <button className="tb-btn" onClick={() => setShowExamples(true)} title="Load example circuits">Examples</button>
+            <button className="tb-btn" onClick={handleSave} title="Save to localStorage">Save</button>
+            <button className="tb-btn" onClick={handleLoad} title="Load from localStorage">Load</button>
+          </div>
+          {/* Viz group */}
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', paddingRight: '8px', borderRight: '1px solid rgba(255,255,255,0.07)' }}>
+            <button
+              className="tb-btn"
+              onClick={() => dispatch({ type: 'TOGGLE_VIZ_MODE' })}
+              title="Toggle voltage display mode"
+              style={{
+                minWidth: '115px',
+                background: state.vizMode === 'analog' ? 'rgba(96,165,250,0.12)' : 'transparent',
+                borderColor: state.vizMode === 'analog' ? 'rgba(96,165,250,0.4)' : undefined,
+                color: state.vizMode === 'analog' ? '#93c5fd' : undefined,
+              }}
+            >
+              {state.vizMode === 'analog' ? '📈 Analog' : '🔢 Digital'}
+            </button>
+            <label
+              className="tb-toggle-label"
+              title="Enable damage / overload physics"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '5px 10px',
+                border: `1px solid ${state.enableDamage ? 'rgba(251,146,60,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: '6px',
+                background: state.enableDamage ? 'rgba(251,146,60,0.1)' : 'transparent',
+                color: state.enableDamage ? '#fb923c' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: 500,
+                transition: 'all 0.2s',
+                userSelect: 'none',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={state.enableDamage}
+                onChange={() => dispatch({ type: 'TOGGLE_DAMAGE' })}
+                style={{ accentColor: '#fb923c', width: 14, height: 14, cursor: 'pointer' }}
+              />
+              Damage
+            </label>
+          </div>
+          {/* Debug group */}
           <button
             className="tb-btn"
-            style={showDebugger ? { borderColor: 'rgba(96,165,250,0.5)', color: '#60a5fa' } : {}}
+            style={showDebugger ? { borderColor: 'rgba(96,165,250,0.5)', color: '#60a5fa', background: 'rgba(96,165,250,0.08)' } : {}}
             onClick={() => setShowDebugger(d => !d)}
+            title="Toggle oscilloscope / probe panel"
           >
-            {showDebugger ? '⚙ Debugger ON' : '⚙ Debugger'}
+            {showDebugger ? '⚙ Probes ON' : '⚙ Probes'}
           </button>
-          <button className="tb-btn" onClick={handleSave}>Save</button>
-          <button className="tb-btn" onClick={handleLoad}>Load</button>
-          <button className="tb-btn sim-btn" onClick={() => dispatch({ type: 'TOGGLE_SIMULATION' })}>
-            {state.isSimulating ? 'Stop Simulation' : 'Start Simulation'}
-            {state.isSimulating ? <span className="pulse-dot"></span> : null}
+          {/* Sim button */}
+          <button
+            className={`tb-btn sim-btn${state.isSimulating ? ' sim-active' : ''}`}
+            onClick={() => dispatch({ type: 'TOGGLE_SIMULATION' })}
+            title={state.isSimulating ? 'Stop simulation' : 'Start simulation'}
+            style={{ minWidth: '120px' }}
+          >
+            {state.isSimulating ? (
+              <><span className="pulse-dot" />Stop Sim</>
+            ) : (
+              <>▶ Run Sim</>
+            )}
           </button>
         </div>
 
@@ -364,7 +405,22 @@ function App() {
             setMobileSidebarOpen(false); // Close drawer on mobile after adding
           }} 
         />
-        <Canvas 
+        {/* Simulation mode banner */}
+        {state.isSimulating && (
+          <div className="sim-banner" style={{
+            position: 'absolute', top: 0, left: 250, right: 0, zIndex: 5,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+            padding: '5px 16px',
+            background: 'rgba(34,197,94,0.08)',
+            borderBottom: '1px solid rgba(34,197,94,0.2)',
+            fontSize: '0.75rem', color: 'rgba(34,197,94,0.8)', fontWeight: 600,
+            pointerEvents: 'none',
+          }}>
+            <span className="pulse-dot" style={{ width: 6, height: 6 }} />
+            SIMULATION RUNNING — drag disabled · click switches/buttons to interact
+          </div>
+        )}
+        <Canvas
           components={state.components}
           wires={state.wires}
           dispatch={dispatch}

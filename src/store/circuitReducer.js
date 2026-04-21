@@ -147,13 +147,37 @@ export function circuitReducer(state, action) {
     case 'TOGGLE_SWITCH':
       newState = {
         ...state,
-        components: state.components.map(c => 
+        components: state.components.map(c =>
           c.id === action.payload && (c.type === 'SWITCH' || c.type === 'PUSH_BUTTON')
-            ? { ...c, properties: { ...c.properties, closed: !c.properties.closed } } 
+            ? { ...c, properties: { ...c.properties, closed: !c.properties.closed } }
             : c
         )
       };
       break;
+
+    case 'SET_SWITCH_STATE': {
+      const { id, closed } = action.payload;
+      newState = {
+        ...state,
+        components: state.components.map(c =>
+          c.id === id && (c.type === 'SWITCH' || c.type === 'PUSH_BUTTON')
+            ? { ...c, properties: { ...c.properties, closed } }
+            : c
+        )
+      };
+      break;
+    }
+
+    case 'UPDATE_WIRE_WAYPOINTS':
+      newState = {
+        ...state,
+        wires: state.wires.map(w =>
+          w.id === action.payload.id
+            ? { ...w, waypoints: action.payload.waypoints }
+            : w
+        )
+      };
+      return newState; // continuous drag, no history
 
     case 'SET_SIMULATION_RESULTS':
       return { ...state, simulationResults: action.payload };
@@ -172,6 +196,9 @@ export function circuitReducer(state, action) {
 
     case 'SET_SELECTED':
       return { ...state, selectedElementId: action.payload };
+
+    case 'TOGGLE_DAMAGE':
+      return { ...state, enableDamage: !state.enableDamage };
 
     case 'TOGGLE_VIZ_MODE':
       return { ...state, vizMode: state.vizMode === 'digital' ? 'analog' : 'digital' };
